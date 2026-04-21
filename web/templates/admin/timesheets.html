@@ -28,12 +28,14 @@
     <a href="{{ url_for('admin_employees') }}">Employees</a>
     <a href="{{ url_for('admin_timesheets') }}" class="active">Timesheets</a>
     <a href="{{ url_for('admin_announcements') }}">Announcements</a>
-    <a href="{{ url_for('dashboard') }}">← Back to Dashboard</a>
+    <a href="{{ url_for('admin_reports') }}">Reports</a>
+    <a href="{{ url_for('dashboard') }}">← Dashboard</a>
   </div>
 
   <form method="GET" action="{{ url_for('admin_timesheets') }}">
     <div class="filter-bar">
-      <div class="filter-field"><label>Employee</label>
+      <div class="filter-field">
+        <label>Employee</label>
         <select name="emp_id">
           <option value="all" {% if emp_id == 'all' %}selected{% endif %}>All Employees</option>
           {% for e in employees %}

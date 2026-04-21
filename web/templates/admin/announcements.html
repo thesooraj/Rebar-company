@@ -10,11 +10,7 @@
   .grid-2 { display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px; }
   .field { margin-bottom: 16px; }
   .field label { display: block; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
-  .field input, .field select, .field textarea {
-    width: 100%; background: var(--surface2); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 11px 14px; font-family: 'Barlow', sans-serif;
-    font-size: 0.95rem; color: var(--text); outline: none; resize: vertical;
-  }
+  .field input, .field select, .field textarea { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 11px 14px; font-family: 'Barlow', sans-serif; font-size: 0.95rem; color: var(--text); outline: none; resize: vertical; }
   .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--blue-light); }
   .field select option { background: var(--surface2); }
   .ann-item { padding: 16px 0; border-bottom: 1px solid var(--border); }
@@ -38,7 +34,8 @@
     <a href="{{ url_for('admin_employees') }}">Employees</a>
     <a href="{{ url_for('admin_timesheets') }}">Timesheets</a>
     <a href="{{ url_for('admin_announcements') }}" class="active">Announcements</a>
-    <a href="{{ url_for('dashboard') }}">← Back to Dashboard</a>
+    <a href="{{ url_for('admin_reports') }}">Reports</a>
+    <a href="{{ url_for('dashboard') }}">← Dashboard</a>
   </div>
 
   {% for cat, msg in get_flashed_messages(with_categories=True) %}
@@ -46,7 +43,6 @@
   {% endfor %}
 
   <div class="grid-2">
-    <!-- Post form -->
     <div class="card">
       <div class="card-title">📝 Post New Announcement</div>
       <form method="POST" action="{{ url_for('admin_announcements') }}">
@@ -70,8 +66,6 @@
         <button type="submit" class="btn btn-orange" style="width:100%">Post Announcement</button>
       </form>
     </div>
-
-    <!-- List -->
     <div class="card">
       <div class="card-title">📋 All Announcements ({{ announcements | length }})</div>
       {% if announcements %}

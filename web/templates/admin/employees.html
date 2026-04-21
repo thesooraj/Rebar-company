@@ -23,20 +23,15 @@
     <a href="{{ url_for('admin_employees') }}" class="active">Employees</a>
     <a href="{{ url_for('admin_timesheets') }}">Timesheets</a>
     <a href="{{ url_for('admin_announcements') }}">Announcements</a>
-    <a href="{{ url_for('dashboard') }}">← Back to Dashboard</a>
+    <a href="{{ url_for('admin_reports') }}">Reports</a>
+    <a href="{{ url_for('dashboard') }}">← Dashboard</a>
   </div>
 
   <div class="card" style="padding:0; overflow:hidden;">
     <table>
       <thead>
         <tr>
-          <th>Employee</th>
-          <th>Code</th>
-          <th>Role</th>
-          <th>Department</th>
-          <th>Email</th>
-          <th>Status</th>
-          <th>Action</th>
+          <th>Employee</th><th>Code</th><th>Role</th><th>Department</th><th>Email</th><th>Status</th><th>Action</th>
         </tr>
       </thead>
       <tbody>
@@ -49,7 +44,7 @@
             </div>
           </td>
           <td style="font-family:'Barlow Condensed',sans-serif;font-weight:600;color:var(--muted)">{{ e.employee_code }}</td>
-          <td style="text-transform:capitalize">
+          <td>
             {% if e.role == 'admin' %}<span class="badge badge-orange">Admin</span>
             {% elif e.role == 'supervisor' %}<span class="badge badge-blue">Supervisor</span>
             {% else %}<span class="badge" style="background:rgba(255,255,255,0.05);color:var(--muted)">Employee</span>{% endif %}

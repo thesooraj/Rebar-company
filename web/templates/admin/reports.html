@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Reports — Admin{% endblock %}
+{% block body %}
+<style>
+  .page-header { margin-bottom: 20px; }
+  .page-header h1 { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 2rem; letter-spacing: 0.04em; }
+  .page-header p { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+  .admin-nav { display: flex; gap: 10px; margin-bottom: 28px; flex-wrap: wrap; }
+  .admin-nav a { padding: 9px 20px; border-radius: var(--radius); font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 0.95rem; letter-spacing: 0.05em; text-transform: uppercase; text-decoration: none; border: 1px solid var(--border); color: var(--muted); transition: all 0.15s; }
+  .admin-nav a:hover, .admin-nav a.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1.4fr; gap: 24px; }
+  .report-card { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 14px; }
+  .report-card h3 { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 1.1rem; letter-spacing: 0.04em; margin-bottom: 6px; }
+  .report-card p { font-size: 0.85rem; color: var(--muted); margin-bottom: 14px; }
+  .report-dates { font-size: 0.8rem; color: var(--muted); margin-bottom: 14px; font-family: 'Barlow Condensed', sans-serif; font-size: 0.95rem; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .field input { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 12px; font-family: 'Barlow', sans-serif; font-size: 0.9rem; color: var(--text); outline: none; width: 100%; }
+  .field input:focus { border-color: var(--blue-light); }
+  .past-report { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .past-report:last-child { border-bottom: none; }
+  .past-report-info { font-size: 0.88rem; }
+  .past-report-info strong { font-weight: 600; }
+  .past-report-meta { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 0.9rem; }
+  @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+</style>
+<main>
+  <div class="page-header">
+    <h1>Reports</h1>
+    <p>Generate and download timesheet reports</p>
+  </div>
+
+  <div class="admin-nav">
+    <a href="{{ url_for('admin_home') }}">Overview</a>
+    <a href="{{ url_for('admin_employees') }}">Employees</a>
+    <a href="{{ url_for('admin_timesheets') }}">Timesheets</a>
+    <a href="{{ url_for('admin_announcements') }}">Announcements</a>
+    <a href="{{ url_for('admin_reports') }}" class="active">Reports</a>
+    <a href="{{ url_for('dashboard') }}">← Dashboard</a>
+  </div>
+
+  {% for cat, msg in get_flashed_messages(with_categories=True) %}
+  <div class="flash {{ cat }}" style="margin-bottom:16px;">{{ msg }}</div>
+  {% endfor %}
+
+  <div class="grid-2">
+    <!-- Generate -->
+    <div>
+      <!-- Weekly quick generate -->
+      <div class="report-card">
+        <h3>📅 Weekly Report</h3>
+        <p>This week's timesheet for all employees.</p>
+        <div class="report-dates">{{ weekly_start }} → {{ weekly_end }}</div>
+        <form method="POST" action="{{ url_for('admin_reports') }}">
+          <input type="hidden" name="period_type" value="weekly" />
+          <input type="hidden" name="from_date" value="{{ weekly_start }}" />
+          <input type="hidden" name="to_date" value="{{ weekly_end }}" />
+          <button type="submit" class="btn btn-primary" style="width:100%">⬇ Download Weekly PDF</button>
+        </form>
+      </div>
+
+      <!-- Fortnightly quick generate -->
+      <div class="report-card">
+        <h3>📆 Fortnightly Report</h3>
+        <p>Last two weeks' timesheet for all employees.</p>
+        <div class="report-dates">{{ fortnightly_start }} → {{ fortnightly_end }}</div>
+        <form method="POST" action="{{ url_for('admin_reports') }}">
+          <input type="hidden" name="period_type" value="fortnightly" />
+          <input type="hidden" name="from_date" value="{{ fortnightly_start }}" />
+          <input type="hidden" name="to_date" value="{{ fortnightly_end }}" />
+          <button type="submit" class="btn btn-orange" style="width:100%">⬇ Download Fortnightly PDF</button>
+        </form>
+      </div>
+
+      <!-- Custom range -->
+      <div class="report-card">
+        <h3>🗓 Custom Date Range</h3>
+        <p>Generate a report for any date range.</p>
+        <form method="POST" action="{{ url_for('admin_reports') }}">
+          <input type="hidden" name="period_type" value="custom" />
+          <div class="field"><label>From</label><input type="date" name="from_date" required /></div>
+          <div class="field"><label>To</label><input type="date" name="to_date" required /></div>
+          <button type="submit" class="btn btn-ghost" style="width:100%">⬇ Download Custom PDF</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Past reports -->
+    <div class="card">
+      <div class="card-title">📋 Previously Generated ({{ past_reports | length }})</div>
+      {% if past_reports %}
+        {% for r in past_reports %}
+        <div class="past-report">
+          <div class="past-report-info">
+            <strong>{{ r.report_type | capitalize }} Report</strong>
+            <div class="past-report-meta">{{ r.period_start }} → {{ r.period_end }}</div>
+            <div class="past-report-meta">
+              {{ r.created_at[:16] }}
+              {% if r.generated_by_name %} · by {{ r.generated_by_name }}{% endif %}
+            </div>
+          </div>
+          {% if r.file_path %}
+          <a href="{{ url_for('download_report', filename=r.file_path.split('/')[-1]) }}"
+             class="btn btn-ghost" style="padding:6px 14px;font-size:0.8rem;">
+            ⬇ PDF
+          </a>
+          {% endif %}
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state">No reports generated yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</main>
+{% endblock %}

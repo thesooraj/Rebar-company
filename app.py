@@ -1,9 +1,10 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_file
 from datetime import datetime
 import os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import database as db
+import reports as rp
 
 app = Flask(__name__, template_folder="web/templates", static_folder="web/static")
 app.secret_key = "rebar-dev-secret-change-in-prod"
@@ -328,7 +329,6 @@ def admin_announcements():
            ORDER BY a.created_at DESC"""
     ).fetchall()
     conn.close()
-
     return render_template("admin/announcements.html", emp=emp, announcements=announcements)
 
 
@@ -344,6 +344,71 @@ def admin_delete_announcement(ann_id):
     finally:
         conn.close()
     return redirect(url_for("admin_announcements"))
+
+
+# ────────────────────────────────────────────────────────────
+# ADMIN — REPORTS
+# ────────────────────────────────────────────────────────────
+
+@app.route("/admin/reports", methods=["GET", "POST"])
+@login_required
+@admin_required
+def admin_reports():
+    emp = current_employee()
+
+    if request.method == "POST":
+        period_type = request.form.get("period_type", "weekly")
+        from_date   = request.form.get("from_date", "")
+        to_date     = request.form.get("to_date", "")
+
+        if not from_date or not to_date:
+            from_date, to_date = rp.get_period_dates(period_type)
+
+        try:
+            filepath = rp.generate_report(
+                period_type=period_type,
+                from_date=from_date,
+                to_date=to_date,
+                generated_by=emp["employee_id"]
+            )
+            return send_file(filepath, as_attachment=True,
+                             download_name=os.path.basename(filepath),
+                             mimetype="application/pdf")
+        except Exception as e:
+            flash(f"Error generating report: {str(e)}", "danger")
+
+    # Get past reports
+    conn = db.get_connection()
+    past_reports = conn.execute(
+        """SELECT r.*, e.full_name as generated_by_name
+           FROM reports r
+           LEFT JOIN employees e ON e.id = r.generated_by
+           ORDER BY r.created_at DESC LIMIT 20"""
+    ).fetchall()
+    conn.close()
+
+    weekly_start, weekly_end         = rp.get_period_dates("weekly")
+    fortnightly_start, fortnightly_end = rp.get_period_dates("fortnightly")
+
+    return render_template("admin/reports.html", emp=emp,
+                           past_reports=past_reports,
+                           weekly_start=weekly_start, weekly_end=weekly_end,
+                           fortnightly_start=fortnightly_start,
+                           fortnightly_end=fortnightly_end)
+
+
+@app.route("/admin/reports/download/<path:filename>")
+@login_required
+@admin_required
+def download_report(filename):
+    filepath = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "database", "reports", filename
+    )
+    if os.path.exists(filepath):
+        return send_file(filepath, as_attachment=True, mimetype="application/pdf")
+    flash("Report file not found.", "danger")
+    return redirect(url_for("admin_reports"))
 
 
 # ────────────────────────────────────────────────────────────
