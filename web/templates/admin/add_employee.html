@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Add Employee — Admin{% endblock %}
+{% block body %}
+<style>
+  .page-header { margin-bottom: 28px; }
+  .page-header h1 { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 2rem; letter-spacing: 0.04em; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .field { margin-bottom: 4px; }
+  .field label { display: block; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+  .field input, .field select {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 11px 14px; font-family: 'Barlow', sans-serif;
+    font-size: 0.95rem; color: var(--text); outline: none; transition: border-color 0.15s;
+  }
+  .field input:focus, .field select:focus { border-color: var(--blue-light); }
+  .field select option { background: var(--surface2); }
+  .form-actions { display: flex; gap: 12px; margin-top: 24px; }
+  @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+</style>
+<main>
+  <div class="page-header">
+    <h1>Add Employee</h1>
+    <p style="color:var(--muted);font-size:0.9rem;margin-top:4px;">Create a new staff account</p>
+  </div>
+
+  {% for cat, msg in get_flashed_messages(with_categories=True) %}
+  <div class="flash {{ cat }}" style="margin-bottom:16px;">{{ msg }}</div>
+  {% endfor %}
+
+  <div class="card">
+    <form method="POST" action="{{ url_for('admin_add_employee') }}">
+      <div class="form-grid">
+        <div class="field">
+          <label>Full Name *</label>
+          <input type="text" name="full_name" placeholder="Jane Smith" required />
+        </div>
+        <div class="field">
+          <label>Email *</label>
+          <input type="email" name="email" placeholder="jane@rebarcompany.com.au" required />
+        </div>
+        <div class="field">
+          <label>Phone</label>
+          <input type="text" name="phone" placeholder="04XX XXX XXX" />
+        </div>
+        <div class="field">
+          <label>Department</label>
+          <input type="text" name="department" placeholder="e.g. Site, Office, Logistics" />
+        </div>
+        <div class="field">
+          <label>Role *</label>
+          <select name="role">
+            <option value="employee">Employee</option>
+            <option value="supervisor">Supervisor</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>PIN (4–6 digits, optional)</label>
+          <input type="text" name="pin" placeholder="e.g. 1234" maxlength="6" />
+        </div>
+        <div class="field">
+          <label>Password *</label>
+          <input type="text" name="password" placeholder="Temporary password" required />
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-orange">Create Employee</button>
+        <a href="{{ url_for('admin_employees') }}" class="btn btn-ghost">Cancel</a>
+      </div>
+    </form>
+  </div>
+</main>
+{% endblock %}

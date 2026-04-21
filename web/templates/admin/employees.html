@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Employees — Admin{% endblock %}
+{% block body %}
+<style>
+  .page-header { margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
+  .page-header h1 { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 2rem; letter-spacing: 0.04em; }
+  .admin-nav { display: flex; gap: 10px; margin-bottom: 28px; flex-wrap: wrap; }
+  .admin-nav a { padding: 9px 20px; border-radius: var(--radius); font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 0.95rem; letter-spacing: 0.05em; text-transform: uppercase; text-decoration: none; border: 1px solid var(--border); color: var(--muted); transition: all 0.15s; }
+  .admin-nav a:hover, .admin-nav a.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .emp-avatar-lg { width: 38px; height: 38px; border-radius: 50%; background: var(--blue); display: flex; align-items: center; justify-content: center; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 1rem; color: #fff; flex-shrink: 0; }
+</style>
+<main>
+  <div class="page-header">
+    <div>
+      <h1>Employees</h1>
+      <p style="color:var(--muted);font-size:0.9rem;margin-top:4px;">{{ employees | length }} total</p>
+    </div>
+    <a href="{{ url_for('admin_add_employee') }}" class="btn btn-orange">+ Add Employee</a>
+  </div>
+
+  <div class="admin-nav">
+    <a href="{{ url_for('admin_home') }}">Overview</a>
+    <a href="{{ url_for('admin_employees') }}" class="active">Employees</a>
+    <a href="{{ url_for('admin_timesheets') }}">Timesheets</a>
+    <a href="{{ url_for('admin_announcements') }}">Announcements</a>
+    <a href="{{ url_for('dashboard') }}">← Back to Dashboard</a>
+  </div>
+
+  <div class="card" style="padding:0; overflow:hidden;">
+    <table>
+      <thead>
+        <tr>
+          <th>Employee</th>
+          <th>Code</th>
+          <th>Role</th>
+          <th>Department</th>
+          <th>Email</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in employees %}
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div class="emp-avatar-lg" style="{% if not e.is_active %}background:var(--surface2);{% endif %}">{{ e.full_name[0] }}</div>
+              <span>{{ e.full_name }}</span>
+            </div>
+          </td>
+          <td style="font-family:'Barlow Condensed',sans-serif;font-weight:600;color:var(--muted)">{{ e.employee_code }}</td>
+          <td style="text-transform:capitalize">
+            {% if e.role == 'admin' %}<span class="badge badge-orange">Admin</span>
+            {% elif e.role == 'supervisor' %}<span class="badge badge-blue">Supervisor</span>
+            {% else %}<span class="badge" style="background:rgba(255,255,255,0.05);color:var(--muted)">Employee</span>{% endif %}
+          </td>
+          <td style="color:var(--muted)">{{ e.department or '—' }}</td>
+          <td style="color:var(--muted);font-size:0.85rem">{{ e.email or '—' }}</td>
+          <td>{% if e.is_active %}<span class="badge badge-green">Active</span>{% else %}<span class="badge badge-red">Inactive</span>{% endif %}</td>
+          <td>
+            <form method="POST" action="{{ url_for('admin_toggle_employee', emp_id=e.id) }}" style="display:inline">
+              <button type="submit" class="btn btn-ghost" style="padding:5px 12px;font-size:0.78rem;">
+                {% if e.is_active %}Deactivate{% else %}Activate{% endif %}
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</main>
+{% endblock %}

@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — The Rebar Company{% endblock %}
+{% block body %}
+<style>
+  .page-header { margin-bottom: 28px; }
+  .page-header h1 { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 2rem; letter-spacing: 0.04em; }
+  .page-header p { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 20px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; }
+  .stat-label { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .stat-value { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 1.9rem; color: var(--text); line-height: 1; }
+  .stat-sub { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+  .clock-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; text-align: center; }
+  #live-time { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 3.5rem; letter-spacing: 0.04em; color: var(--text); line-height: 1; margin-bottom: 4px; }
+  #live-date { font-size: 0.85rem; color: var(--muted); margin-bottom: 24px; }
+  #clock-status { font-size: 0.9rem; color: var(--muted); margin-bottom: 20px; min-height: 22px; }
+  .clock-btn { width: 100%; padding: 14px; font-size: 1.15rem; border-radius: var(--radius); cursor: pointer; border: none; font-family: 'Barlow Condensed', sans-serif; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; transition: all 0.15s; }
+  #btn-in  { background: #22C55E; color: #fff; } #btn-in:hover  { background: #16A34A; }
+  #btn-out { background: #EF4444; color: #fff; } #btn-out:hover { background: #DC2626; }
+  .announcement { padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .announcement:last-child { border-bottom: none; }
+  .ann-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .ann-title { font-weight: 600; font-size: 0.95rem; }
+  .ann-body { font-size: 0.88rem; color: var(--muted); line-height: 1.5; }
+  .ann-footer { font-size: 0.76rem; color: var(--muted); margin-top: 6px; display: flex; align-items: center; gap: 10px; }
+  .mark-read-btn { background: none; border: none; color: var(--blue-light); font-size: 0.76rem; cursor: pointer; padding: 0; text-decoration: underline; }
+  .ann-read .ann-title { color: var(--muted); }
+  .shift-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+  .shift-row:last-child { border-bottom: none; }
+  .shift-time { font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 600; }
+  @media (max-width: 768px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+</style>
+<main>
+  <div class="page-header">
+    <h1>G'day, {{ emp.full_name.split()[0] }} 👋</h1>
+    <p>{{ emp.employee_code }} · {{ emp.role | capitalize }}</p>
+  </div>
+  <div class="grid-3">
+    <div class="stat-card">
+      <div class="stat-label">Today's Hours</div>
+      {# today_total passed from Python #}
+      <div class="stat-value">{{ (today_total // 60) }}h {{ (today_total % 60) }}m</div>
+      <div class="stat-sub">{{ today_records | length }} shift(s) today</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Status</div>
+      {% if open_clock %}
+      <div class="stat-value" style="color:#4ADE80">Clocked In</div>
+      <div class="stat-sub">Since {{ open_clock.clock_in[11:16] }} UTC</div>
+      {% else %}
+      <div class="stat-value" style="color:var(--muted)">Off Clock</div>
+      <div class="stat-sub">Not currently working</div>
+      {% endif %}
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Announcements</div>
+      {% set unread = announcements | selectattr('is_read', 'equalto', 0) | list %}
+      <div class="stat-value" style="color: {% if unread %}var(--orange){% else %}var(--text){% endif %}">{{ unread | length }}</div>
+      <div class="stat-sub">unread message(s)</div>
+    </div>
+  </div>
+  <div class="grid-2">
+    <div class="clock-card">
+      <div id="live-time">--:--:--</div>
+      <div id="live-date">Loading...</div>
+      <div id="clock-status">
+        {% if open_clock %}✅ Clocked in since <strong>{{ open_clock.clock_in[11:16] }}</strong>
+        {% else %}You are not clocked in.{% endif %}
+      </div>
+      {% if open_clock %}
+      <button class="clock-btn" id="btn-out" onclick="doClock('out')">⏹ Clock Out</button>
+      {% else %}
+      <button class="clock-btn" id="btn-in" onclick="doClock('in')">▶ Clock In</button>
+      {% endif %}
+    </div>
+    <div class="card">
+      <div class="card-title">📢 Announcements</div>
+      {% if announcements %}
+        {% for a in announcements %}
+        <div class="announcement ann-{% if a.is_read %}read{% else %}unread{% endif %}" id="ann-{{ a.id }}">
+          <div class="ann-header">
+            <div class="ann-title">{{ a.title }}</div>
+            {% if a.priority == 'urgent' %}<span class="badge badge-red">Urgent</span>
+            {% elif a.priority == 'high' %}<span class="badge badge-orange">High</span>
+            {% elif not a.is_read %}<span class="badge badge-blue">New</span>{% endif %}
+          </div>
+          <div class="ann-body">{{ a.body }}</div>
+          <div class="ann-footer">
+            <span>{{ a.created_at[:10] }}</span>
+            {% if not a.is_read %}<button class="mark-read-btn" onclick="markRead({{ a.id }})">Mark as read</button>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p style="color: var(--muted); font-size: 0.9rem;">No announcements right now.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% if today_records %}
+  <div class="card" style="margin-top: 20px;">
+    <div class="card-title">Today's Shifts</div>
+    {% for r in today_records %}
+    <div class="shift-row">
+      <div><span class="shift-time">{{ r.clock_in[11:16] }}</span>{% if r.clock_out %} → <span class="shift-time">{{ r.clock_out[11:16] }}</span>{% endif %}</div>
+      <div>{% if r.total_minutes %}<span class="badge badge-green">{{ r.total_minutes // 60 }}h {{ r.total_minutes % 60 }}m</span>{% else %}<span class="badge badge-orange">In Progress</span>{% endif %}</div>
+      <div style="color: var(--muted); font-size: 0.8rem;">{{ r.method }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</main>
+<script>
+  function updateClock() {
+    const now = new Date();
+    document.getElementById('live-time').textContent = now.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    document.getElementById('live-date').textContent = now.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  }
+  updateClock(); setInterval(updateClock, 1000);
+
+  async function doClock(action) {
+    const url = action === 'in' ? '/api/clock-in' : '/api/clock-out';
+    const btn = document.getElementById(action === 'in' ? 'btn-in' : 'btn-out');
+    btn.disabled = true; btn.textContent = 'Processing...';
+    try {
+      const res  = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const data = await res.json();
+      if (data.ok) {
+        if (action === 'in') {
+          document.getElementById('clock-status').innerHTML = '✅ Clocked in — refresh to update stats.';
+          btn.outerHTML = '<button class="clock-btn" id="btn-out" onclick="doClock(\'out\')">⏹ Clock Out</button>';
+        } else {
+          document.getElementById('clock-status').innerHTML = `✅ Clocked out — worked <strong>${data.display}</strong>. Refreshing...`;
+          setTimeout(() => location.reload(), 1500);
+        }
+      } else { alert('Error: ' + data.error); btn.disabled = false; }
+    } catch (e) { alert('Network error.'); btn.disabled = false; }
+  }
+
+  async function markRead(id) {
+    await fetch(`/api/mark-read/${id}`, { method: 'POST' });
+    const el = document.getElementById('ann-' + id);
+    el.classList.remove('ann-unread'); el.classList.add('ann-read');
+    el.querySelector('.mark-read-btn')?.remove();
+    el.querySelector('.badge-blue')?.remove();
+  }
+</script>
+{% endblock %}

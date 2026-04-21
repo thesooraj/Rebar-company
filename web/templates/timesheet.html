@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Timesheet — The Rebar Company{% endblock %}
+{% block body %}
+<style>
+  .page-header { margin-bottom: 28px; }
+  .page-header h1 { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 2rem; letter-spacing: 0.04em; }
+  .page-header p { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+  .filter-bar { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 24px; flex-wrap: wrap; }
+  .filter-field label { display: block; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .filter-field input { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 12px; font-family: 'Barlow', sans-serif; font-size: 0.9rem; color: var(--text); outline: none; }
+  .filter-field input:focus { border-color: var(--blue-light); }
+  .summary-bar { display: flex; gap: 24px; margin-bottom: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 24px; flex-wrap: wrap; }
+  .summary-label { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .summary-value { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 1.5rem; color: var(--text); }
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+</style>
+<main>
+  <div class="page-header">
+    <h1>Timesheet</h1>
+    <p>Your clock records — {{ emp.full_name }}</p>
+  </div>
+  <form method="GET" action="{{ url_for('timesheet') }}">
+    <div class="filter-bar">
+      <div class="filter-field"><label>From</label><input type="date" name="from" value="{{ from_date }}" /></div>
+      <div class="filter-field"><label>To</label><input type="date" name="to" value="{{ to_date }}" /></div>
+      <button type="submit" class="btn btn-primary">Filter</button>
+    </div>
+  </form>
+  <div class="summary-bar">
+    <div><div class="summary-label">Total Hours</div><div class="summary-value">{{ total_hours }}h {{ total_mins }}m</div></div>
+    <div><div class="summary-label">Shifts</div><div class="summary-value">{{ records | length }}</div></div>
+    <div><div class="summary-label">Period</div><div class="summary-value" style="font-size:1rem;padding-top:6px;">{{ from_date }} → {{ to_date }}</div></div>
+  </div>
+  <div class="card" style="padding: 0; overflow: hidden;">
+    {% if records %}
+    <table>
+      <thead><tr><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Duration</th><th>Method</th><th>Notes</th></tr></thead>
+      <tbody>
+        {% for r in records %}
+        <tr>
+          <td>{{ r.clock_in[:10] }}</td>
+          <td>{{ r.clock_in[11:16] }}</td>
+          <td>{% if r.clock_out %}{{ r.clock_out[11:16] }}{% else %}<span class="badge badge-orange">Active</span>{% endif %}</td>
+          <td>{% if r.total_minutes %}<span class="badge badge-green">{{ r.total_minutes // 60 }}h {{ r.total_minutes % 60 }}m</span>{% else %}—{% endif %}</td>
+          <td style="text-transform:capitalize;color:var(--muted)">{{ r.method }}</td>
+          <td style="color:var(--muted)">{{ r.notes or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state"><p>No records found for this period.</p></div>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}

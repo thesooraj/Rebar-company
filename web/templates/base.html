@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}The Rebar Company{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --blue: #1565C0; --blue-dark: #0D47A1; --blue-light: #1976D2;
+      --orange: #FF6F00; --orange-lt: #FFA000;
+      --bg: #0A0F1E; --surface: #111827; --surface2: #1A2235;
+      --border: rgba(255,255,255,0.08); --text: #F0F4FF; --muted: #8898AA;
+      --radius: 6px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Barlow', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    nav {
+      background: var(--surface); border-bottom: 2px solid var(--orange);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 28px; height: 60px; position: sticky; top: 0; z-index: 100;
+    }
+    .nav-brand {
+      font-family: 'Barlow Condensed', sans-serif; font-weight: 800;
+      font-size: 1.35rem; letter-spacing: 0.04em; color: var(--text); text-decoration: none;
+    }
+    .nav-brand span { color: var(--orange); }
+    .nav-links { display: flex; gap: 4px; align-items: center; }
+    .nav-links a {
+      color: var(--muted); text-decoration: none; font-size: 0.88rem;
+      font-weight: 500; padding: 6px 14px; border-radius: var(--radius); transition: all 0.15s;
+    }
+    .nav-links a:hover, .nav-links a.active { color: var(--text); background: rgba(255,255,255,0.07); }
+    .nav-links a.admin-link { color: var(--orange); }
+    .nav-links a.admin-link:hover { color: var(--text); background: rgba(255,111,0,0.15); }
+    .nav-user { display: flex; align-items: center; gap: 12px; }
+    .nav-avatar {
+      width: 34px; height: 34px; border-radius: 50%; background: var(--blue);
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 0.9rem; color: #fff;
+    }
+    .nav-name { font-size: 0.85rem; font-weight: 500; color: var(--muted); }
+    .btn-logout {
+      font-size: 0.8rem; color: var(--muted); text-decoration: none;
+      padding: 5px 10px; border: 1px solid var(--border); border-radius: var(--radius); transition: all 0.15s;
+    }
+    .btn-logout:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
+
+    main { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+
+    .flash-wrap { max-width: 1100px; margin: 16px auto 0; padding: 0 24px; }
+    .flash { padding: 12px 18px; border-radius: var(--radius); font-size: 0.9rem; margin-bottom: 8px; border-left: 3px solid; }
+    .flash.danger  { background: rgba(239,68,68,0.12); border-color: #EF4444; color: #FCA5A5; }
+    .flash.success { background: rgba(34,197,94,0.12); border-color: #22C55E; color: #86EFAC; }
+    .flash.warning { background: rgba(234,179,8,0.12); border-color: #EAB308; color: #FDE047; }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
+    .card-title {
+      font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 1.1rem;
+      letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin-bottom: 18px;
+    }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px; padding: 10px 22px;
+      border-radius: var(--radius); font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700; font-size: 1rem; letter-spacing: 0.06em; text-transform: uppercase;
+      cursor: pointer; border: none; transition: all 0.15s; text-decoration: none;
+    }
+    .btn-primary { background: var(--blue); color: #fff; }
+    .btn-primary:hover { background: var(--blue-light); }
+    .btn-orange { background: var(--orange); color: #fff; }
+    .btn-orange:hover { background: var(--orange-lt); }
+    .btn-ghost {
+      background: transparent; color: var(--muted); border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { color: var(--text); border-color: rgba(255,255,255,0.25); }
+
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    .badge-green  { background: rgba(34,197,94,0.15);  color: #4ADE80; }
+    .badge-blue   { background: rgba(59,130,246,0.15); color: #60A5FA; }
+    .badge-orange { background: rgba(255,111,0,0.15);  color: #FFAB40; }
+    .badge-red    { background: rgba(239,68,68,0.15);  color: #F87171; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 0.78rem;
+      letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+      text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border);
+    }
+    td { padding: 12px 14px; font-size: 0.9rem; border-bottom: 1px solid var(--border); color: var(--text); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+{% if session.token %}
+<nav>
+  <a href="{{ url_for('dashboard') }}" class="nav-brand">THE <span>REBAR</span> COMPANY</a>
+  <div class="nav-links">
+    <a href="{{ url_for('dashboard') }}" class="{% if request.endpoint == 'dashboard' %}active{% endif %}">Dashboard</a>
+    <a href="{{ url_for('timesheet') }}" class="{% if request.endpoint == 'timesheet' %}active{% endif %}">Timesheet</a>
+    {% if emp and emp.role in ('admin', 'supervisor') %}
+    <a href="{{ url_for('admin_home') }}" class="admin-link {% if 'admin' in request.endpoint %}active{% endif %}">⚙ Admin Panel</a>
+    {% endif %}
+  </div>
+  <div class="nav-user">
+    {% if emp %}
+    <div class="nav-avatar">{{ emp.full_name[0] }}</div>
+    <span class="nav-name">{{ emp.full_name }}</span>
+    {% endif %}
+    <a href="{{ url_for('logout') }}" class="btn-logout">Sign out</a>
+  </div>
+</nav>
+{% endif %}
+
+<div class="flash-wrap">
+  {% for cat, msg in get_flashed_messages(with_categories=True) %}
+  <div class="flash {{ cat }}">{{ msg }}</div>
+  {% endfor %}
+</div>
+
+{% block body %}{% endblock %}
+</body>
+</html>
