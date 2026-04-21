@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Documents — Admin{% endblock %}
+{% block body %}
+<style>
+  .page-header { margin-bottom: 20px; }
+  .page-header h1 { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 2rem; letter-spacing: 0.04em; }
+  .admin-nav { display: flex; gap: 10px; margin-bottom: 28px; flex-wrap: wrap; }
+  .admin-nav a { padding: 9px 20px; border-radius: var(--radius); font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 0.95rem; letter-spacing: 0.05em; text-transform: uppercase; text-decoration: none; border: 1px solid var(--border); color: var(--muted); transition: all 0.15s; }
+  .admin-nav a:hover, .admin-nav a.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1.6fr; gap: 24px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+  .field input, .field select {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 11px 14px; font-family: 'Barlow', sans-serif;
+    font-size: 0.95rem; color: var(--text); outline: none;
+  }
+  .field input:focus, .field select:focus { border-color: var(--blue-light); }
+  .field select option { background: var(--surface2); }
+  .file-input { padding: 8px !important; cursor: pointer; }
+  .doc-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); gap: 12px; }
+  .doc-row:last-child { border-bottom: none; }
+  .doc-info { flex: 1; }
+  .doc-title { font-weight: 600; font-size: 0.9rem; }
+  .doc-meta { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+  .doc-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .delete-btn { background: none; border: 1px solid rgba(239,68,68,0.3); color: #F87171; border-radius: var(--radius); padding: 4px 10px; font-size: 0.75rem; cursor: pointer; }
+  .delete-btn:hover { background: rgba(239,68,68,0.1); }
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 0.9rem; }
+  @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+</style>
+<main>
+  <div class="page-header">
+    <h1>Documents</h1>
+    <p style="color:var(--muted);font-size:0.9rem;margin-top:4px;">Upload and manage company documents</p>
+  </div>
+
+  <div class="admin-nav">
+    <a href="{{ url_for('admin_home') }}">Overview</a>
+    <a href="{{ url_for('admin_employees') }}">Employees</a>
+    <a href="{{ url_for('admin_timesheets') }}">Timesheets</a>
+    <a href="{{ url_for('admin_announcements') }}">Announcements</a>
+    <a href="{{ url_for('admin_reports') }}">Reports</a>
+    <a href="{{ url_for('admin_documents') }}" class="active">Documents</a>
+    <a href="{{ url_for('dashboard') }}">← Dashboard</a>
+  </div>
+
+  {% for cat, msg in get_flashed_messages(with_categories=True) %}
+  <div class="flash {{ cat }}" style="margin-bottom:16px;">{{ msg }}</div>
+  {% endfor %}
+
+  <div class="grid-2">
+    <!-- Upload form -->
+    <div class="card">
+      <div class="card-title">📤 Upload Document</div>
+      <form method="POST" action="{{ url_for('admin_documents') }}" enctype="multipart/form-data">
+        <div class="field"><label>Document Title *</label><input type="text" name="title" placeholder="e.g. Safety Induction 2024" required /></div>
+        <div class="field">
+          <label>Category</label>
+          <select name="category">
+            <option value="general">General</option>
+            <option value="safety">Safety</option>
+            <option value="hr">HR</option>
+            <option value="payroll">Payroll</option>
+            <option value="site">Site</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Visibility</label>
+          <select name="is_public">
+            <option value="1">Public — all employees can see</option>
+            <option value="0">Private — admin only</option>
+          </select>
+        </div>
+        <div class="field"><label>Expiry Date (optional)</label><input type="date" name="expiry" /></div>
+        <div class="field"><label>File * (PDF, Word, Excel, image)</label><input type="file" name="file" class="file-input" required /></div>
+        <button type="submit" class="btn btn-orange" style="width:100%">Upload Document</button>
+      </form>
+    </div>
+
+    <!-- Documents list -->
+    <div class="card">
+      <div class="card-title">📋 All Documents ({{ docs | length }})</div>
+      {% if docs %}
+        {% for d in docs %}
+        {% set ext = d.file_name.rsplit('.', 1)[-1].lower() %}
+        <div class="doc-row">
+          <div style="font-size:1.4rem;flex-shrink:0;">
+            {% if ext == 'pdf' %}📄{% elif ext in ('doc','docx') %}📝{% elif ext in ('xls','xlsx') %}📊{% elif ext in ('png','jpg','jpeg') %}🖼{% else %}📎{% endif %}
+          </div>
+          <div class="doc-info">
+            <div class="doc-title">{{ d.title }}</div>
+            <div class="doc-meta">
+              <span class="badge badge-blue" style="text-transform:capitalize;font-size:0.68rem;">{{ d.category }}</span>
+              {% if d.is_public %}<span class="badge badge-green" style="font-size:0.68rem;">Public</span>{% else %}<span class="badge badge-red" style="font-size:0.68rem;">Private</span>{% endif %}
+              {% if d.file_size_kb %} · {{ d.file_size_kb }} KB{% endif %}
+              · {{ d.created_at[:10] }}
+            </div>
+          </div>
+          <div class="doc-actions">
+            <a href="{{ url_for('download_document', doc_id=d.id) }}" class="btn btn-ghost" style="padding:5px 10px;font-size:0.75rem;">⬇</a>
+            <form method="POST" action="{{ url_for('admin_delete_document', doc_id=d.id) }}">
+              <button type="submit" class="delete-btn" onclick="return confirm('Delete this document?')">✕</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state">No documents uploaded yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</main>
+{% endblock %}

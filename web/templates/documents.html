@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Documents — The Rebar Company{% endblock %}
+{% block body %}
+<style>
+  .page-header { margin-bottom: 28px; }
+  .page-header h1 { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 2rem; letter-spacing: 0.04em; }
+  .page-header p { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+  .filter-bar { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+  .filter-bar a { padding: 7px 16px; border-radius: var(--radius); font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 0.88rem; letter-spacing: 0.04em; text-transform: uppercase; text-decoration: none; border: 1px solid var(--border); color: var(--muted); transition: all 0.15s; }
+  .filter-bar a:hover, .filter-bar a.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .doc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .doc-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; display: flex; flex-direction: column; gap: 10px; transition: border-color 0.15s; }
+  .doc-card:hover { border-color: rgba(255,255,255,0.2); }
+  .doc-icon { font-size: 2rem; line-height: 1; }
+  .doc-title { font-weight: 600; font-size: 0.95rem; }
+  .doc-meta { font-size: 0.78rem; color: var(--muted); }
+  .doc-footer { display: flex; align-items: center; justify-content: space-between; margin-top: auto; }
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+</style>
+<main>
+  <div class="page-header">
+    <h1>Documents</h1>
+    <p>Company files, contracts, safety docs and more</p>
+  </div>
+
+  <div class="filter-bar">
+    <a href="{{ url_for('documents') }}" class="{% if category == 'all' %}active{% endif %}">All</a>
+    <a href="{{ url_for('documents', category='safety') }}" class="{% if category == 'safety' %}active{% endif %}">Safety</a>
+    <a href="{{ url_for('documents', category='hr') }}" class="{% if category == 'hr' %}active{% endif %}">HR</a>
+    <a href="{{ url_for('documents', category='payroll') }}" class="{% if category == 'payroll' %}active{% endif %}">Payroll</a>
+    <a href="{{ url_for('documents', category='site') }}" class="{% if category == 'site' %}active{% endif %}">Site</a>
+    <a href="{{ url_for('documents', category='general') }}" class="{% if category == 'general' %}active{% endif %}">General</a>
+  </div>
+
+  {% if docs %}
+  <div class="doc-grid">
+    {% for d in docs %}
+    {% set ext = d.file_name.rsplit('.', 1)[-1].lower() %}
+    <div class="doc-card">
+      <div class="doc-icon">
+        {% if ext == 'pdf' %}📄
+        {% elif ext in ('doc', 'docx') %}📝
+        {% elif ext in ('xls', 'xlsx') %}📊
+        {% elif ext in ('png', 'jpg', 'jpeg') %}🖼
+        {% else %}📎{% endif %}
+      </div>
+      <div class="doc-title">{{ d.title }}</div>
+      <div class="doc-meta">
+        <span class="badge badge-blue" style="text-transform:capitalize">{{ d.category }}</span>
+        {% if d.file_size_kb %}&nbsp;· {{ d.file_size_kb }} KB{% endif %}
+      </div>
+      {% if d.expiry_date %}
+      <div class="doc-meta" style="color: #FFAB40;">⚠ Expires {{ d.expiry_date[:10] }}</div>
+      {% endif %}
+      <div class="doc-footer">
+        <span class="doc-meta">{{ d.created_at[:10] }}{% if d.uploader %} · {{ d.uploader }}{% endif %}</span>
+        <a href="{{ url_for('download_document', doc_id=d.id) }}" class="btn btn-primary" style="padding:6px 14px;font-size:0.8rem;">⬇ Download</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <p>No documents available in this category yet.</p>
+  </div>
+  {% endif %}
+</main>
+{% endblock %}

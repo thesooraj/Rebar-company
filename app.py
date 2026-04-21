@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_file
 from datetime import datetime
+from werkzeug.utils import secure_filename
 import os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -8,6 +9,14 @@ import reports as rp
 
 app = Flask(__name__, template_folder="web/templates", static_folder="web/static")
 app.secret_key = "rebar-dev-secret-change-in-prod"
+
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "database", "uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "doc", "docx", "xls", "xlsx", "txt"}
+
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 # ────────────────────────────────────────────────────────────
@@ -149,6 +158,53 @@ def timesheet():
     return render_template("timesheet.html", emp=emp, records=records,
                            from_date=from_date, to_date=to_date,
                            total_hours=total_mins // 60, total_mins=total_mins % 60)
+
+
+# ────────────────────────────────────────────────────────────
+# DOCUMENTS (employee view)
+# ────────────────────────────────────────────────────────────
+
+@app.route("/documents")
+@login_required
+def documents():
+    emp      = current_employee()
+    category = request.args.get("category", "all")
+    conn     = db.get_connection()
+    if category == "all":
+        docs = conn.execute(
+            """SELECT d.*, e.full_name as uploader
+               FROM documents d
+               LEFT JOIN employees e ON e.id = d.uploaded_by
+               WHERE d.is_public = 1
+               ORDER BY d.created_at DESC"""
+        ).fetchall()
+    else:
+        docs = conn.execute(
+            """SELECT d.*, e.full_name as uploader
+               FROM documents d
+               LEFT JOIN employees e ON e.id = d.uploaded_by
+               WHERE d.is_public = 1 AND d.category = ?
+               ORDER BY d.created_at DESC""",
+            (category,)
+        ).fetchall()
+    conn.close()
+    return render_template("documents.html", emp=emp, docs=docs, category=category)
+
+
+@app.route("/documents/download/<int:doc_id>")
+@login_required
+def download_document(doc_id):
+    conn = db.get_connection()
+    doc  = conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
+    conn.close()
+    if not doc:
+        flash("Document not found.", "danger")
+        return redirect(url_for("documents"))
+    filepath = os.path.join(UPLOAD_FOLDER, doc["file_name"])
+    if os.path.exists(filepath):
+        return send_file(filepath, as_attachment=True, download_name=doc["file_name"])
+    flash("File not found on server.", "danger")
+    return redirect(url_for("documents"))
 
 
 # ────────────────────────────────────────────────────────────
@@ -320,6 +376,7 @@ def admin_announcements():
                 flash("Announcement posted.", "success")
             finally:
                 conn.close()
+        return redirect(url_for("admin_announcements"))
 
     conn = db.get_connection()
     announcements = conn.execute(
@@ -377,7 +434,6 @@ def admin_reports():
         except Exception as e:
             flash(f"Error generating report: {str(e)}", "danger")
 
-    # Get past reports
     conn = db.get_connection()
     past_reports = conn.execute(
         """SELECT r.*, e.full_name as generated_by_name
@@ -387,7 +443,7 @@ def admin_reports():
     ).fetchall()
     conn.close()
 
-    weekly_start, weekly_end         = rp.get_period_dates("weekly")
+    weekly_start, weekly_end           = rp.get_period_dates("weekly")
     fortnightly_start, fortnightly_end = rp.get_period_dates("fortnightly")
 
     return render_template("admin/reports.html", emp=emp,
@@ -409,6 +465,84 @@ def download_report(filename):
         return send_file(filepath, as_attachment=True, mimetype="application/pdf")
     flash("Report file not found.", "danger")
     return redirect(url_for("admin_reports"))
+
+
+# ────────────────────────────────────────────────────────────
+# ADMIN — DOCUMENTS
+# ────────────────────────────────────────────────────────────
+
+@app.route("/admin/documents", methods=["GET", "POST"])
+@login_required
+@admin_required
+def admin_documents():
+    emp = current_employee()
+
+    if request.method == "POST":
+        title     = request.form.get("title", "").strip()
+        category  = request.form.get("category", "general")
+        is_public = int(request.form.get("is_public", 1))
+        expiry    = request.form.get("expiry", "") or None
+        file      = request.files.get("file")
+
+        if not title or not file or file.filename == "":
+            flash("Title and file are required.", "danger")
+        elif not allowed_file(file.filename):
+            flash("File type not allowed. Use PDF, Word, Excel, image or txt.", "danger")
+        else:
+            filename  = secure_filename(file.filename)
+            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_")
+            filename  = timestamp + filename
+            filepath  = os.path.join(UPLOAD_FOLDER, filename)
+            file.save(filepath)
+            size_kb   = os.path.getsize(filepath) // 1024
+
+            conn = db.get_connection()
+            try:
+                conn.execute(
+                    """INSERT INTO documents
+                           (title, category, file_path, file_name,
+                            file_size_kb, uploaded_by, is_public, expiry_date)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (title, category, filepath, filename,
+                     size_kb, emp["employee_id"], is_public, expiry)
+                )
+                conn.commit()
+                flash(f"Document '{title}' uploaded successfully.", "success")
+                return redirect(url_for("admin_documents"))
+            except Exception as e:
+                flash(f"Error: {str(e)}", "danger")
+            finally:
+                conn.close()
+
+    conn = db.get_connection()
+    docs = conn.execute(
+        """SELECT d.*, e.full_name as uploader
+           FROM documents d
+           LEFT JOIN employees e ON e.id = d.uploaded_by
+           ORDER BY d.created_at DESC"""
+    ).fetchall()
+    conn.close()
+
+    return render_template("admin/documents.html", emp=emp, docs=docs)
+
+
+@app.route("/admin/documents/<int:doc_id>/delete", methods=["POST"])
+@login_required
+@admin_required
+def admin_delete_document(doc_id):
+    conn = db.get_connection()
+    try:
+        doc = conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
+        if doc:
+            filepath = os.path.join(UPLOAD_FOLDER, doc["file_name"])
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+            conn.commit()
+            flash("Document deleted.", "success")
+    finally:
+        conn.close()
+    return redirect(url_for("admin_documents"))
 
 
 # ────────────────────────────────────────────────────────────
