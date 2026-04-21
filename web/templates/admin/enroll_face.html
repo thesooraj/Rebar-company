@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Face Enrolment — Admin{% endblock %}
+{% block body %}
+<style>
+  .page-header { margin-bottom: 20px; }
+  .page-header h1 { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 2rem; letter-spacing: 0.04em; }
+  .admin-nav { display: flex; gap: 10px; margin-bottom: 28px; flex-wrap: wrap; }
+  .admin-nav a { padding: 9px 20px; border-radius: var(--radius); font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 0.95rem; letter-spacing: 0.05em; text-transform: uppercase; text-decoration: none; border: 1px solid var(--border); color: var(--muted); transition: all 0.15s; }
+  .admin-nav a:hover, .admin-nav a.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+  .field select, .field input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 11px 14px; font-family: 'Barlow', sans-serif; font-size: 0.95rem; color: var(--text); outline: none; }
+  .field select:focus, .field input:focus { border-color: var(--blue-light); }
+  .field select option { background: var(--surface2); }
+  .camera-box { width: 100%; aspect-ratio: 4/3; background: var(--surface2); border: 2px solid var(--border); border-radius: var(--radius); overflow: hidden; position: relative; }
+  #video { width: 100%; height: 100%; object-fit: cover; display: block; transform: scaleX(-1); }
+  .camera-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 160px; height: 160px; border: 3px solid var(--orange); border-radius: 50%; pointer-events: none; opacity: 0.6; }
+  #canvas { display: none; }
+  #enroll-status { padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); text-align: center; font-size: 0.9rem; margin-top: 12px; min-height: 44px; }
+  .emp-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .emp-row:last-child { border-bottom: none; }
+  .emp-info { font-size: 0.9rem; }
+  .emp-name { font-weight: 500; }
+  .emp-code { font-size: 0.78rem; color: var(--muted); }
+  .delete-btn { background: none; border: 1px solid rgba(239,68,68,0.3); color: #F87171; border-radius: var(--radius); padding: 4px 10px; font-size: 0.75rem; cursor: pointer; }
+  .delete-btn:hover { background: rgba(239,68,68,0.1); }
+  @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+</style>
+<main>
+  <div class="page-header">
+    <h1>Face Enrolment</h1>
+    <p style="color:var(--muted);font-size:0.9rem;margin-top:4px;">Register employee faces for clock-in</p>
+  </div>
+
+  <div class="admin-nav">
+    <a href="{{ url_for('admin_home') }}">Overview</a>
+    <a href="{{ url_for('admin_employees') }}" class="active">Employees</a>
+    <a href="{{ url_for('admin_timesheets') }}">Timesheets</a>
+    <a href="{{ url_for('admin_announcements') }}">Announcements</a>
+    <a href="{{ url_for('admin_reports') }}">Reports</a>
+    <a href="{{ url_for('admin_documents') }}">Documents</a>
+    <a href="{{ url_for('dashboard') }}">← Dashboard</a>
+  </div>
+
+  {% for cat, msg in get_flashed_messages(with_categories=True) %}
+  <div class="flash {{ cat }}" style="margin-bottom:16px;">{{ msg }}</div>
+  {% endfor %}
+
+  <div class="grid-2">
+    <!-- Enrol via camera -->
+    <div class="card">
+      <div class="card-title">📷 Enrol New Face</div>
+      <div class="field">
+        <label>Select Employee</label>
+        <select id="emp-select">
+          <option value="">— Choose employee —</option>
+          {% for e in employees %}
+          <option value="{{ e.id }}">{{ e.full_name }} ({{ e.employee_code }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="camera-box">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas"></canvas>
+        <div class="camera-overlay"></div>
+      </div>
+      <div id="enroll-status">📷 Select an employee then capture their face</div>
+      <button class="btn btn-orange" style="width:100%;margin-top:12px;" id="btn-enroll" onclick="enrollFace()">
+        📸 Capture &amp; Enrol
+      </button>
+
+      <div style="margin-top:16px;">
+        <div class="card-title" style="margin-bottom:10px;">Or upload a photo</div>
+        <form id="upload-form">
+          <div class="field">
+            <label>Photo (clear face shot)</label>
+            <input type="file" id="upload-file" accept="image/*" />
+          </div>
+          <button type="button" class="btn btn-primary" style="width:100%;" onclick="enrollFromFile()">
+            ⬆ Upload &amp; Enrol
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Enrolled employees -->
+    <div class="card">
+      <div class="card-title">✅ Enrolled Employees ({{ enrolled | length }})</div>
+      {% if enrolled %}
+        {% for e in enrolled %}
+        <div class="emp-row">
+          <div class="emp-info">
+            <div class="emp-name">{{ e.full_name }}</div>
+            <div class="emp-code">{{ e.employee_code }} · {{ e.face_count }} photo(s)</div>
+          </div>
+          <form method="POST" action="{{ url_for('admin_delete_face', emp_id=e.id) }}">
+            <button type="submit" class="delete-btn" onclick="return confirm('Remove face data?')">Remove</button>
+          </form>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p style="color:var(--muted);font-size:0.9rem;">No faces enrolled yet.</p>
+      {% endif %}
+
+      <div style="margin-top:24px;">
+        <div class="card-title" style="margin-bottom:10px;">Not Enrolled</div>
+        {% for e in not_enrolled %}
+        <div class="emp-row">
+          <div class="emp-info">
+            <div class="emp-name">{{ e.full_name }}</div>
+            <div class="emp-code">{{ e.employee_code }}</div>
+          </div>
+          <span class="badge badge-red">No Face</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const video  = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const status = document.getElementById('enroll-status');
+
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+    .then(stream => {
+      video.srcObject = stream;
+      video.onloadedmetadata = () => {
+        status.textContent = '✅ Camera ready';
+      };
+    })
+    .catch(() => { status.textContent = '❌ Camera unavailable — use file upload instead'; });
+
+  async function enrollFace() {
+    const empId = document.getElementById('emp-select').value;
+    if (!empId) { status.textContent = '⚠ Please select an employee first.'; return; }
+
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+
+    canvas.toBlob(async (blob) => {
+      await sendEnroll(empId, blob);
+    }, 'image/jpeg', 0.9);
+  }
+
+  async function enrollFromFile() {
+    const empId = document.getElementById('emp-select').value;
+    const file  = document.getElementById('upload-file').files[0];
+    if (!empId) { status.textContent = '⚠ Please select an employee first.'; return; }
+    if (!file)  { status.textContent = '⚠ Please select a photo.'; return; }
+    await sendEnroll(empId, file);
+  }
+
+  async function sendEnroll(empId, blob) {
+    status.textContent = '⏳ Processing...';
+    const formData = new FormData();
+    formData.append('image', blob, 'face.jpg');
+    formData.append('employee_id', empId);
+
+    try {
+      const res  = await fetch('/api/enroll-face', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.ok) {
+        status.innerHTML = `✅ Face enrolled for <strong>${data.name}</strong>!`;
+        status.style.color = '#4ADE80';
+        setTimeout(() => location.reload(), 1500);
+      } else {
+        status.innerHTML = `❌ ${data.error}`;
+        status.style.color = '#F87171';
+      }
+    } catch (e) {
+      status.textContent = '❌ Network error.';
+    }
+  }
+</script>
+{% endblock %}

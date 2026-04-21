@@ -6,6 +6,7 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import database as db
 import reports as rp
+import face_recognition_module as frm
 
 app = Flask(__name__, template_folder="web/templates", static_folder="web/static")
 app.secret_key = "rebar-dev-secret-change-in-prod"
@@ -141,6 +142,122 @@ def api_mark_read(announcement_id):
     emp = current_employee()
     db.mark_announcement_read(announcement_id, emp["employee_id"])
     return jsonify({"ok": True})
+
+
+# ────────────────────────────────────────────────────────────
+# FACE RECOGNITION
+# ────────────────────────────────────────────────────────────
+
+@app.route("/face-clock")
+@login_required
+def face_clock():
+    emp = current_employee()
+    return render_template("face_clock.html", emp=emp)
+
+
+@app.route("/api/face-clock", methods=["POST"])
+@login_required
+def api_face_clock():
+    image_file = request.files.get("image")
+    if not image_file:
+        return jsonify({"ok": False, "error": "No image received."})
+
+    image_bytes = image_file.read()
+
+    try:
+        matched, error = frm.recognize_face_from_image(image_bytes)
+    except RuntimeError as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+    if not matched:
+        return jsonify({"ok": False, "error": error})
+
+    emp_id     = matched["employee_id"]
+    open_clock = db.get_open_clock(emp_id)
+
+    try:
+        if open_clock:
+            minutes = db.clock_out(emp_id)
+            action  = f"Clocked out — {minutes // 60}h {minutes % 60}m"
+            act     = "clock_out"
+        else:
+            db.clock_in(emp_id, method="face")
+            action = "Clocked in"
+            act    = "clock_in"
+    except RuntimeError as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+    return jsonify({
+        "ok":     True,
+        "name":   matched["full_name"],
+        "action": action,
+        "act":    act,
+        "time":   datetime.utcnow().strftime("%H:%M"),
+    })
+
+
+@app.route("/api/enroll-face", methods=["POST"])
+@login_required
+@admin_required
+def api_enroll_face():
+    emp_id     = request.form.get("employee_id")
+    image_file = request.files.get("image")
+
+    if not emp_id or not image_file:
+        return jsonify({"ok": False, "error": "Employee and image required."})
+
+    employee = db.get_employee_by_id(int(emp_id))
+    if not employee:
+        return jsonify({"ok": False, "error": "Employee not found."})
+
+    try:
+        frm.enroll_face_from_image(int(emp_id), image_file.read())
+        return jsonify({"ok": True, "name": employee["full_name"]})
+    except RuntimeError as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+
+@app.route("/admin/enroll-face")
+@login_required
+@admin_required
+def admin_enroll_face():
+    emp       = current_employee()
+    employees = db.get_all_employees()
+
+    conn = db.get_connection()
+    face_counts = conn.execute(
+        """SELECT employee_id, COUNT(*) as cnt
+           FROM face_encodings GROUP BY employee_id"""
+    ).fetchall()
+    conn.close()
+
+    face_map   = {r["employee_id"]: r["cnt"] for r in face_counts}
+    enrolled   = []
+    not_enrolled = []
+
+    for e in employees:
+        if e["face_enrolled"]:
+            enrolled.append({
+                "id":            e["id"],
+                "full_name":     e["full_name"],
+                "employee_code": e["employee_code"],
+                "face_count":    face_map.get(e["id"], 0),
+            })
+        else:
+            not_enrolled.append(e)
+
+    return render_template("admin/enroll_face.html", emp=emp,
+                           employees=employees, enrolled=enrolled,
+                           not_enrolled=not_enrolled)
+
+
+@app.route("/admin/employees/<int:emp_id>/delete-face", methods=["POST"])
+@login_required
+@admin_required
+def admin_delete_face(emp_id):
+    frm.delete_face_encodings(emp_id)
+    flash("Face data removed.", "success")
+    return redirect(url_for("admin_enroll_face"))
 
 
 # ────────────────────────────────────────────────────────────
@@ -487,7 +604,7 @@ def admin_documents():
         if not title or not file or file.filename == "":
             flash("Title and file are required.", "danger")
         elif not allowed_file(file.filename):
-            flash("File type not allowed. Use PDF, Word, Excel, image or txt.", "danger")
+            flash("File type not allowed.", "danger")
         else:
             filename  = secure_filename(file.filename)
             timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_")
@@ -522,7 +639,6 @@ def admin_documents():
            ORDER BY d.created_at DESC"""
     ).fetchall()
     conn.close()
-
     return render_template("admin/documents.html", emp=emp, docs=docs)
 
 
