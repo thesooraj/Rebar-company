@@ -8,6 +8,7 @@ import database as db
 import reports as rp
 import face_recognition_module as frm
 import wifi_check as wc
+import offline_queue as oq
 
 app = Flask(__name__, template_folder="web/templates", static_folder="web/static")
 app.secret_key = "rebar-dev-secret-change-in-prod"
@@ -70,6 +71,11 @@ def login():
             token = db.create_session(employee["id"], ip_address=request.remote_addr, hours=10)
             session["token"] = token
             db.log_action(employee["id"], "LOGIN", detail=f"ip={request.remote_addr}")
+            # Auto sync offline queue on login
+            try:
+                oq.sync_queue()
+            except Exception:
+                pass
             return redirect(url_for("dashboard"))
         else:
             flash("Invalid email or password.", "danger")
@@ -90,21 +96,30 @@ def dashboard():
     emp           = current_employee()
     open_clock    = db.get_open_clock(emp["employee_id"])
     announcements = db.get_active_announcements(emp["employee_id"])
-    today         = datetime.utcnow().strftime("%Y-%m-%d")
+    today         = datetime.now(db.TIMEZONE).strftime("%Y-%m-%d")
     today_records = db.get_clock_records(emp["employee_id"], today, today)
     today_total   = sum(r["total_minutes"] or 0 for r in today_records)
     wifi_status   = wc.get_wifi_status()
+    pending_sync  = oq.get_pending_count()
     return render_template("dashboard.html", emp=emp, open_clock=open_clock,
                            announcements=announcements, today_records=today_records,
-                           today_total=today_total, wifi_status=wifi_status)
+                           today_total=today_total, wifi_status=wifi_status,
+                           pending_sync=pending_sync)
 
 
 @app.route("/api/clock-in", methods=["POST"])
 @login_required
 def api_clock_in():
     emp = current_employee()
+    offline_mode = db.get_setting("offline_mode", "1") == "1"
+
     if not wc.is_on_office_wifi():
+        if offline_mode:
+            oq.queue_clock_in(emp["employee_id"], method="manual")
+            return jsonify({"ok": True, "offline": True,
+                            "message": "You are offline. Clock-in queued and will sync automatically."})
         return jsonify({"ok": False, "error": "You must be on the office WiFi to clock in."}), 403
+
     try:
         record_id = db.clock_in(emp["employee_id"], method="manual")
         return jsonify({"ok": True, "record_id": record_id})
@@ -130,6 +145,13 @@ def api_mark_read(announcement_id):
     emp = current_employee()
     db.mark_announcement_read(announcement_id, emp["employee_id"])
     return jsonify({"ok": True})
+
+
+@app.route("/api/sync-queue", methods=["POST"])
+@login_required
+def api_sync_queue():
+    result = oq.sync_queue()
+    return jsonify({"ok": True, "result": result})
 
 
 @app.route("/face-clock")
@@ -176,7 +198,7 @@ def api_face_clock():
         "ok":     True,
         "name":   matched["full_name"],
         "action": action,
-        "time":   datetime.utcnow().strftime("%H:%M"),
+        "time":   datetime.now(db.TIMEZONE).strftime("%H:%M"),
     })
 
 
@@ -247,8 +269,8 @@ def admin_delete_face(emp_id):
 @login_required
 def timesheet():
     emp        = current_employee()
-    from_date  = request.args.get("from", datetime.utcnow().strftime("%Y-%m-01"))
-    to_date    = request.args.get("to",   datetime.utcnow().strftime("%Y-%m-%d"))
+    from_date  = request.args.get("from", datetime.now(db.TIMEZONE).strftime("%Y-%m-01"))
+    to_date    = request.args.get("to",   datetime.now(db.TIMEZONE).strftime("%Y-%m-%d"))
     records    = db.get_clock_records(emp["employee_id"], from_date, to_date)
     total_mins = sum(r["total_minutes"] or 0 for r in records)
     return render_template("timesheet.html", emp=emp, records=records,
@@ -305,17 +327,18 @@ def download_document(doc_id):
 def admin_home():
     emp           = current_employee()
     employees     = db.get_all_employees(active_only=False)
-    today         = datetime.utcnow().strftime("%Y-%m-%d")
+    today         = datetime.now(db.TIMEZONE).strftime("%Y-%m-%d")
     announcements = db.get_active_announcements(emp["employee_id"])
     conn          = db.get_connection()
     today_clocked = conn.execute(
         "SELECT DISTINCT employee_id FROM clock_records WHERE DATE(clock_in) = DATE('now')"
     ).fetchall()
     conn.close()
-    clocked_ids = {r["employee_id"] for r in today_clocked}
+    clocked_ids  = {r["employee_id"] for r in today_clocked}
+    pending_sync = oq.get_pending_count()
     return render_template("admin/home.html", emp=emp, employees=employees,
                            clocked_ids=clocked_ids, announcements=announcements,
-                           today=today)
+                           today=today, pending_sync=pending_sync)
 
 
 @app.route("/admin/employees")
@@ -391,8 +414,8 @@ def admin_toggle_employee(emp_id):
 @admin_required
 def admin_timesheets():
     emp       = current_employee()
-    from_date = request.args.get("from", datetime.utcnow().strftime("%Y-%m-01"))
-    to_date   = request.args.get("to",   datetime.utcnow().strftime("%Y-%m-%d"))
+    from_date = request.args.get("from", datetime.now(db.TIMEZONE).strftime("%Y-%m-01"))
+    to_date   = request.args.get("to",   datetime.now(db.TIMEZONE).strftime("%Y-%m-%d"))
     emp_id    = request.args.get("emp_id", "all")
     employees = db.get_all_employees()
 
@@ -558,7 +581,7 @@ def admin_documents():
             flash("File type not allowed.", "danger")
         else:
             filename  = secure_filename(file.filename)
-            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_")
+            timestamp = datetime.now(db.TIMEZONE).strftime("%Y%m%d_%H%M%S_")
             filename  = timestamp + filename
             filepath  = os.path.join(UPLOAD_FOLDER, filename)
             file.save(filepath)
@@ -575,7 +598,7 @@ def admin_documents():
                      size_kb, emp["employee_id"], is_public, expiry)
                 )
                 conn.commit()
-                flash(f"Document uploaded successfully.", "success")
+                flash("Document uploaded successfully.", "success")
                 return redirect(url_for("admin_documents"))
             except Exception as e:
                 flash(f"Error: {str(e)}", "danger")
