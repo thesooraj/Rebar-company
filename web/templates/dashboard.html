@@ -18,6 +18,8 @@
   .clock-btn { width: 100%; padding: 14px; font-size: 1.15rem; border-radius: var(--radius); cursor: pointer; border: none; font-family: 'Barlow Condensed', sans-serif; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; transition: all 0.15s; }
   #btn-in  { background: #22C55E; color: #fff; } #btn-in:hover  { background: #16A34A; }
   #btn-out { background: #EF4444; color: #fff; } #btn-out:hover { background: #DC2626; }
+  .face-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 10px; margin-top: 10px; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: var(--radius); font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 0.95rem; letter-spacing: 0.06em; text-transform: uppercase; text-decoration: none; transition: all 0.15s; }
+  .face-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.25); }
   .announcement { padding: 14px 0; border-bottom: 1px solid var(--border); }
   .announcement:last-child { border-bottom: none; }
   .ann-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
@@ -36,10 +38,10 @@
     <h1>G'day, {{ emp.full_name.split()[0] }} 👋</h1>
     <p>{{ emp.employee_code }} · {{ emp.role | capitalize }}</p>
   </div>
+
   <div class="grid-3">
     <div class="stat-card">
       <div class="stat-label">Today's Hours</div>
-      {# today_total passed from Python #}
       <div class="stat-value">{{ (today_total // 60) }}h {{ (today_total % 60) }}m</div>
       <div class="stat-sub">{{ today_records | length }} shift(s) today</div>
     </div>
@@ -47,7 +49,7 @@
       <div class="stat-label">Status</div>
       {% if open_clock %}
       <div class="stat-value" style="color:#4ADE80">Clocked In</div>
-      <div class="stat-sub">Since {{ open_clock.clock_in[11:16] }} UTC</div>
+      <div class="stat-sub">Since {{ open_clock.clock_in[11:16] }}</div>
       {% else %}
       <div class="stat-value" style="color:var(--muted)">Off Clock</div>
       <div class="stat-sub">Not currently working</div>
@@ -60,22 +62,30 @@
       <div class="stat-sub">unread message(s)</div>
     </div>
   </div>
+
   <div class="grid-2">
     <div class="clock-card">
       <div id="live-time">--:--:--</div>
       <div id="live-date">Loading...</div>
       <div id="clock-status">
-        {% if open_clock %}✅ Clocked in since <strong>{{ open_clock.clock_in[11:16] }}</strong>
-        {% else %}You are not clocked in.{% endif %}
+        {% if open_clock %}
+          Clocked in since <strong>{{ open_clock.clock_in[11:16] }}</strong>
+        {% else %}
+          You are not clocked in.
+        {% endif %}
       </div>
+
       {% if open_clock %}
-      <button class="clock-btn" id="btn-out" onclick="doClock('out')">⏹ Clock Out</button>
+      <button class="clock-btn" id="btn-out" onclick="doClock('out')">Stop Clock Out</button>
       {% else %}
-      <button class="clock-btn" id="btn-in" onclick="doClock('in')">▶ Clock In</button>
+      <button class="clock-btn" id="btn-in" onclick="doClock('in')">Clock In</button>
       {% endif %}
+
+      <a href="/face-clock" class="face-btn">📷 Use Face ID Instead</a>
     </div>
+
     <div class="card">
-      <div class="card-title">📢 Announcements</div>
+      <div class="card-title">Announcements</div>
       {% if announcements %}
         {% for a in announcements %}
         <div class="announcement ann-{% if a.is_read %}read{% else %}unread{% endif %}" id="ann-{{ a.id }}">
@@ -88,7 +98,9 @@
           <div class="ann-body">{{ a.body }}</div>
           <div class="ann-footer">
             <span>{{ a.created_at[:10] }}</span>
-            {% if not a.is_read %}<button class="mark-read-btn" onclick="markRead({{ a.id }})">Mark as read</button>{% endif %}
+            {% if not a.is_read %}
+            <button class="mark-read-btn" onclick="markRead({{ a.id }})">Mark as read</button>
+            {% endif %}
           </div>
         </div>
         {% endfor %}
@@ -97,50 +109,72 @@
       {% endif %}
     </div>
   </div>
+
   {% if today_records %}
   <div class="card" style="margin-top: 20px;">
     <div class="card-title">Today's Shifts</div>
     {% for r in today_records %}
     <div class="shift-row">
-      <div><span class="shift-time">{{ r.clock_in[11:16] }}</span>{% if r.clock_out %} → <span class="shift-time">{{ r.clock_out[11:16] }}</span>{% endif %}</div>
-      <div>{% if r.total_minutes %}<span class="badge badge-green">{{ r.total_minutes // 60 }}h {{ r.total_minutes % 60 }}m</span>{% else %}<span class="badge badge-orange">In Progress</span>{% endif %}</div>
+      <div>
+        <span class="shift-time">{{ r.clock_in[11:16] }}</span>
+        {% if r.clock_out %} to <span class="shift-time">{{ r.clock_out[11:16] }}</span>{% endif %}
+      </div>
+      <div>
+        {% if r.total_minutes %}
+          <span class="badge badge-green">{{ r.total_minutes // 60 }}h {{ r.total_minutes % 60 }}m</span>
+        {% else %}
+          <span class="badge badge-orange">In Progress</span>
+        {% endif %}
+      </div>
       <div style="color: var(--muted); font-size: 0.8rem;">{{ r.method }}</div>
     </div>
     {% endfor %}
   </div>
   {% endif %}
 </main>
+
 <script>
   function updateClock() {
     const now = new Date();
-    document.getElementById('live-time').textContent = now.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    document.getElementById('live-date').textContent = now.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    document.getElementById('live-time').textContent =
+      now.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    document.getElementById('live-date').textContent =
+      now.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   }
-  updateClock(); setInterval(updateClock, 1000);
+  updateClock();
+  setInterval(updateClock, 1000);
 
   async function doClock(action) {
     const url = action === 'in' ? '/api/clock-in' : '/api/clock-out';
     const btn = document.getElementById(action === 'in' ? 'btn-in' : 'btn-out');
-    btn.disabled = true; btn.textContent = 'Processing...';
+    btn.disabled = true;
+    btn.textContent = 'Processing...';
     try {
       const res  = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       const data = await res.json();
       if (data.ok) {
         if (action === 'in') {
-          document.getElementById('clock-status').innerHTML = '✅ Clocked in — refresh to update stats.';
-          btn.outerHTML = '<button class="clock-btn" id="btn-out" onclick="doClock(\'out\')">⏹ Clock Out</button>';
+          document.getElementById('clock-status').innerHTML = 'Clocked in — refresh to update stats.';
+          btn.outerHTML = '<button class="clock-btn" id="btn-out" onclick="doClock(\'out\')">Stop Clock Out</button>';
         } else {
-          document.getElementById('clock-status').innerHTML = `✅ Clocked out — worked <strong>${data.display}</strong>. Refreshing...`;
+          document.getElementById('clock-status').innerHTML = 'Clocked out — worked <strong>' + data.display + '</strong>. Refreshing...';
           setTimeout(() => location.reload(), 1500);
         }
-      } else { alert('Error: ' + data.error); btn.disabled = false; }
-    } catch (e) { alert('Network error.'); btn.disabled = false; }
+      } else {
+        alert('Error: ' + data.error);
+        btn.disabled = false;
+      }
+    } catch (e) {
+      alert('Network error.');
+      btn.disabled = false;
+    }
   }
 
   async function markRead(id) {
-    await fetch(`/api/mark-read/${id}`, { method: 'POST' });
+    await fetch('/api/mark-read/' + id, { method: 'POST' });
     const el = document.getElementById('ann-' + id);
-    el.classList.remove('ann-unread'); el.classList.add('ann-read');
+    el.classList.remove('ann-unread');
+    el.classList.add('ann-read');
     el.querySelector('.mark-read-btn')?.remove();
     el.querySelector('.badge-blue')?.remove();
   }

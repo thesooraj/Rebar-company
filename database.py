@@ -8,16 +8,22 @@ import os
 import hashlib
 import secrets
 from datetime import datetime
+import pytz
 
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH  = os.path.join(BASE_DIR, "database", "rebar.db")
+TIMEZONE = pytz.timezone("Australia/Melbourne")
+
+
+def now_local() -> str:
+    """Return current time in Australian Eastern time as ISO string."""
+    return datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def get_connection() -> sqlite3.Connection:
-    """Return a connection with foreign-key enforcement and row-factory set."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -201,7 +207,7 @@ def init_db() -> None:
         if cur.fetchone()[0] == 0:
             _create_default_admin(conn)
         conn.commit()
-        print(f"[DB] Initialised → {DB_PATH}")
+        print(f"[DB] Initialised -> {DB_PATH}")
     finally:
         conn.close()
 
@@ -214,8 +220,7 @@ def _create_default_admin(conn):
            VALUES (?, ?, ?, 'admin', ?, 1)""",
         ("RC-000", "System Admin", "admin@rebarcompany.com.au", password_hash),
     )
-    print("[DB] Default admin created  —  email: admin@rebarcompany.com.au  |  password: admin1234")
-    print("[DB] Change this password immediately after first login.")
+    print("[DB] Default admin created — email: admin@rebarcompany.com.au | password: admin1234")
 
 
 # ─────────────────────────────────────────────
@@ -245,9 +250,9 @@ def log_action(actor_id, action, target_table=None, target_id=None, detail=None,
     try:
         conn.execute(
             """INSERT INTO audit_log
-                   (actor_id, action, target_table, target_id, detail, ip_address)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (actor_id, action, target_table, target_id, detail, ip_address),
+                   (actor_id, action, target_table, target_id, detail, ip_address, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (actor_id, action, target_table, target_id, detail, ip_address, now_local()),
         )
         conn.commit()
     finally:
@@ -266,10 +271,10 @@ def set_setting(key, value):
     try:
         conn.execute(
             """INSERT INTO settings (key, value, updated_at)
-               VALUES (?, ?, datetime('now'))
+               VALUES (?, ?, ?)
                ON CONFLICT(key) DO UPDATE SET value = excluded.value,
                                               updated_at = excluded.updated_at""",
-            (key, value),
+            (key, value, now_local()),
         )
         conn.commit()
     finally:
@@ -334,8 +339,8 @@ def clock_in(employee_id, method="manual", location=None, notes=None):
             raise RuntimeError(f"Employee {employee_id} is already clocked in.")
         cur = conn.execute(
             """INSERT INTO clock_records (employee_id, clock_in, method, location, notes)
-               VALUES (?, datetime('now'), ?, ?, ?)""",
-            (employee_id, method, location, notes),
+               VALUES (?, ?, ?, ?, ?)""",
+            (employee_id, now_local(), method, location, notes),
         )
         conn.commit()
         log_action(employee_id, "CLOCK_IN", "clock_records", cur.lastrowid, f"method={method}")
@@ -352,16 +357,20 @@ def clock_out(employee_id, notes=None):
         ).fetchone()
         if not record:
             raise RuntimeError(f"Employee {employee_id} is not currently clocked in.")
-        clock_in_dt = datetime.fromisoformat(record["clock_in"])
-        total_mins  = int((datetime.utcnow() - clock_in_dt).total_seconds() / 60)
+
+        clock_in_dt = datetime.strptime(record["clock_in"], "%Y-%m-%d %H:%M:%S")
+        now_dt      = datetime.now(TIMEZONE).replace(tzinfo=None)
+        total_mins  = int((now_dt - clock_in_dt).total_seconds() / 60)
+
         conn.execute(
             """UPDATE clock_records
-               SET clock_out = datetime('now'), total_minutes = ?, notes = COALESCE(?, notes)
+               SET clock_out = ?, total_minutes = ?, notes = COALESCE(?, notes)
                WHERE id = ?""",
-            (total_mins, notes, record["id"]),
+            (now_local(), total_mins, notes, record["id"]),
         )
         conn.commit()
-        log_action(employee_id, "CLOCK_OUT", "clock_records", record["id"], f"total_minutes={total_mins}")
+        log_action(employee_id, "CLOCK_OUT", "clock_records", record["id"],
+                   f"total_minutes={total_mins}")
         return total_mins
     finally:
         conn.close()
@@ -399,12 +408,12 @@ def get_clock_records(employee_id, from_date, to_date):
 def create_session(employee_id, ip_address=None, hours=8):
     from datetime import timedelta
     token      = secrets.token_urlsafe(32)
-    expires_at = (datetime.utcnow() + timedelta(hours=hours)).isoformat()
+    expires_at = (datetime.now(TIMEZONE) + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
     conn = get_connection()
     try:
         conn.execute(
-            "INSERT INTO sessions (token, employee_id, expires_at, ip_address) VALUES (?, ?, ?, ?)",
-            (token, employee_id, expires_at, ip_address),
+            "INSERT INTO sessions (token, employee_id, expires_at, ip_address, created_at) VALUES (?, ?, ?, ?, ?)",
+            (token, employee_id, expires_at, ip_address, now_local()),
         )
         conn.commit()
     finally:
@@ -415,11 +424,12 @@ def get_session(token):
     conn = get_connection()
     try:
         return conn.execute(
-            """SELECT s.*, e.role, e.full_name, e.employee_code
+            """SELECT s.*, e.role, e.full_name, e.employee_code, e.id as employee_id
                FROM sessions s
                JOIN employees e ON e.id = s.employee_id
-               WHERE s.token = ? AND s.expires_at > datetime('now')""",
-            (token,),
+               WHERE s.token = ?
+                 AND s.expires_at > ?""",
+            (token, now_local()),
         ).fetchone()
     finally:
         conn.close()
@@ -446,12 +456,11 @@ def get_active_announcements(employee_id, department=None):
                FROM announcements a
                LEFT JOIN announcement_reads ar
                       ON ar.announcement_id = a.id AND ar.employee_id = ?
-               WHERE (a.expires_at IS NULL OR a.expires_at > datetime('now'))
+               WHERE (a.expires_at IS NULL OR a.expires_at > ?)
                  AND (a.audience = 'all'
-                      OR (a.audience = 'department' AND a.department = ?)
-                     )
+                      OR (a.audience = 'department' AND a.department = ?))
                ORDER BY a.priority DESC, a.created_at DESC""",
-            (employee_id, department),
+            (employee_id, now_local(), department),
         ).fetchall()
     finally:
         conn.close()
@@ -460,8 +469,8 @@ def mark_announcement_read(announcement_id, employee_id):
     conn = get_connection()
     try:
         conn.execute(
-            "INSERT OR IGNORE INTO announcement_reads (announcement_id, employee_id) VALUES (?, ?)",
-            (announcement_id, employee_id),
+            "INSERT OR IGNORE INTO announcement_reads (announcement_id, employee_id, read_at) VALUES (?, ?, ?)",
+            (announcement_id, employee_id, now_local()),
         )
         conn.commit()
     finally:
